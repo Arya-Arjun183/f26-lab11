@@ -24,6 +24,10 @@ export class RefundLedger implements Subscriber<RefundRequested> {
   readonly name = 'RefundLedger';
 
   private readonly entries: LedgerEntry[] = [];
+  /** One ledger entry per bus message, including an entry whose payment is being retried. */
+  private readonly entriesByMessageId = new Map<string, LedgerEntry>();
+  /** Messages for which both the ledger entry and payment-provider call completed. */
+  private readonly completedMessageIds = new Set<string>();
   private readonly gateway: PaymentGateway;
 
   constructor(gateway: PaymentGateway) {
@@ -31,16 +35,25 @@ export class RefundLedger implements Subscriber<RefundRequested> {
   }
 
   handle(message: Message<RefundRequested>): void {
+    if (this.completedMessageIds.has(message.id)) {
+      return;
+    }
+
     const event = message.payload;
-    this.entries.push({
-      entryId: `led-${this.entries.length + 1}`,
-      bookingId: event.bookingId,
-      organizer: event.organizer,
-      amountCents: event.amountCents,
-      reason: event.reason,
-      recordedAtMinute: message.publishedAtMinute,
-    });
+    if (!this.entriesByMessageId.has(message.id)) {
+      const entry: LedgerEntry = {
+        entryId: `led-${this.entries.length + 1}`,
+        bookingId: event.bookingId,
+        organizer: event.organizer,
+        amountCents: event.amountCents,
+        reason: event.reason,
+        recordedAtMinute: message.publishedAtMinute,
+      };
+      this.entries.push(entry);
+      this.entriesByMessageId.set(message.id, entry);
+    }
     this.gateway.refund(event.bookingId, event.amountCents);
+    this.completedMessageIds.add(message.id);
   }
 
   /** Every ledger entry, oldest first. */
