@@ -30,10 +30,15 @@ function main(): void {
   printRefundState(app, 'after the failed delivery');
   printMessageLog(app);
 
-  console.log(
-    '\nthe refund message is in the log and in the dead-letter list. ' +
-      'Milestone 3 asks what you do with it.',
-  );
+  const messageId = cancellation.refundMessageId;
+  if (messageId === undefined) {
+    throw new Error('this cancellation owed no refund, so there is no message to redeliver');
+  }
+
+  console.log(`\nredelivering ${messageId} after the provider recovered`);
+  app.bus.redeliver(messageId);
+  printRefundState(app, 'after redelivery');
+  printMessageLog(app);
 }
 
 main();
